@@ -1,0 +1,127 @@
+blueprint:
+  name: "Light with Motionsensor (SmartHome yourself)"
+  description: |
+    Turn on a light, when motion is detected for defined Time.
+    Switch off without motion if timeout reached and no motion for defined time.
+    (Light stays on longer, when manually turned on)
+  domain: automation
+  #  source_url: https://github.com/home-assistant/core/blob/dev/homeassistant/components/automation/blueprints/motion_light.yaml
+  input:
+    motion_entity:
+      name: "Motion Sensor"
+      description: "The motionsensor to use"
+      selector:
+        entity:
+          domain: binary_sensor
+          device_class: motion
+    light_target:
+      name: Light
+      description: light to use
+      selector:
+        target:
+          entity:
+            domain: light
+    all_day:
+      name: Switch on only at night
+      description: "Don't switch on lights during the day, if turned on."
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 1
+    no_motion_wait:
+      name: "No motion time"
+      description: "Time to leave the light on after last motion is detected."
+      default: 120
+      selector:
+        number:
+          min: 0
+          max: 3600
+          unit_of_measurement: "seconds"
+    light_auto_off_after:
+      name: "Light on - timeout"
+      description: |
+        Time after which the light should be switched off,
+        if there has been no movement in the "No motion time" period.
+        (For the case of manual switch on)
+      default: 600
+      selector:
+        number:
+          min: 0
+          max: 3600
+          unit_of_measurement: "seconds"
+
+mode: restart
+max_exceeded: silent
+
+variables:
+  all_day: !input all_day
+  my_lights: !input light_target
+
+trigger:
+  - platform: state
+    entity_id: !input motion_entity
+    from: "off"
+    to: "on"
+    id: bewegung
+
+  - platform: state
+    entity_id: !input motion_entity
+    to: "off"
+    for:
+      seconds: !input no_motion_wait
+    id: keine_bewegung
+
+  - platform: template
+    value_template: "{{ expand(my_lights.entity_id) | selectattr('state', '==', 'off') | list | count > 0 }}"
+    for:
+      seconds: !input light_auto_off_after
+    id: light_on_timeout
+
+condition: []
+
+action:
+  # Licht bei Bewegung einschalten
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: bewegung
+          - condition: template
+            value_template: "{{ expand(my_lights.entity_id) | selectattr('state', '==', 'off') | list | count > 0 }}"
+          - condition: or
+            conditions:
+              - condition: template
+                value_template: "{{ all_day|int==0 }}"
+              - condition: state
+                entity_id: sun.sun
+                state: below_horizon
+        sequence:
+          - service: light.turn_on
+            target: !input light_target
+
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: keine_bewegung
+          - condition: template
+            value_template: "{{ expand(my_lights.entity_id) | selectattr('state', '==', 'on') | list | count > 0 }}"
+        sequence:
+          - service: light.turn_off
+            target: !input light_target
+
+  # Licht nach {{light_auto_off_after}} Minuten abschalten,
+  # wenn keine Bewegung für {{no_motion_wait}} Minuten
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: light_on_timeout
+          - condition: state
+            entity_id: !input motion_entity
+            state: "off"
+            for:
+              minutes: !input no_motion_wait
+          - condition: template
+            value_template: "{{ expand(my_lights.entity_id) | selectattr('state', '==', 'on') | list | count > 0 }}"
+        sequence:
+          - service: light.turn_off
+            target: !input light_target
