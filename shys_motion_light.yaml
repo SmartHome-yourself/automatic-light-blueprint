@@ -5,7 +5,7 @@ blueprint:
     Switch off without motion if timeout reached and no motion for defined time.
     (Light stays on longer, when manually turned on)
   domain: automation
-  #  source_url: https://github.com/home-assistant/core/blob/dev/homeassistant/components/automation/blueprints/motion_light.yaml
+  source_url: https://github.com/SmartHome-yourself/automatic-light-blueprint/blob/main/shys_motion_light.yaml
   input:
     motion_entity:
       name: "Motion Sensor"
