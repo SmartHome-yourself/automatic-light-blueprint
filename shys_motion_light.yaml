@@ -6,6 +6,10 @@ blueprint:
     (Light stays on longer, when manually turned on)
   domain: automation
   source_url: https://github.com/SmartHome-yourself/automatic-light-blueprint/blob/main/shys_motion_light.yaml
+
+  # ---------------------------------------------
+  #   Eingabefelder
+  # ---------------------------------------------
   input:
     motion_entity:
       name: "Motion Sensor"
@@ -14,6 +18,7 @@ blueprint:
         entity:
           domain: binary_sensor
           device_class: motion
+
     light_target:
       name: Light
       description: light to use
@@ -21,43 +26,107 @@ blueprint:
         target:
           entity:
             domain: light
+
     all_day:
-      name: Switch on only at night
-      description: "Don't switch on lights during the day, if turned on."
-      default: 0
+      name: Turn on only at night?
+      description: "You can choose, if the light automatically turn on all day or only at night."
+      default: "only at night"
       selector:
-        number:
-          min: 0
-          max: 1
+        select:
+          options:
+            - "switch on all day"
+            - "only at night"
+
     no_motion_wait:
       name: "No motion time"
       description: "Time to leave the light on after last motion is detected."
-      default: 120
+      default:
+        minutes: 2
       selector:
-        number:
-          min: 0
-          max: 3600
-          unit_of_measurement: "seconds"
+        duration:
+
     light_auto_off_after:
       name: "Light on - timeout"
       description: |
         Time after which the light should be switched off,
         if there has been no movement in the "No motion time" period.
         (For the case of manual switch on)
-      default: 600
+      default:
+        minutes: 5
+      selector:
+        duration:
+
+    default_brightness:
+      name: "Default brightness"
+      description: |
+        The default brightness to set when automatically turn on the light.
+      default: 100
       selector:
         number:
-          min: 0
-          max: 3600
-          unit_of_measurement: "seconds"
+          min: 1
+          max: 100
+          unit_of_measurement: "%"
 
+    alternative_period_start:
+      name: "Alternative period begin"
+      description: |
+        Start of the alternative period, when the alternative brightness should be set instead of the default brightness.
+        If you didn't need the alternative period, leave it at 00:00:00
+      default: 00:00:00
+      selector:
+        time:
+
+    alternative_period_end:
+      name: "Alternative period end"
+      description: |
+        End of the alternative period, when the alternative brightness should be set instead of the default brightness.
+        If you didn't need the alternative period, leave it at 00:00:00
+      default: 00:00:00
+      selector:
+        time:
+
+    alternative_brightness:
+      name: "Alternative brightness"
+      description: |
+        The brightness to set when automatically turn on the light in alternative period.
+        If you didn't need the alternative period, leave it at 100%
+      default: 100
+      selector:
+        number:
+          min: 1
+          max: 100
+          unit_of_measurement: "%"
+
+# ---------------------------------------------
+#  internals
+# ---------------------------------------------
 mode: restart
 max_exceeded: silent
 
 variables:
   all_day: !input all_day
   my_lights: !input light_target
+  period_start: !input alternative_period_start
+  period_end: !input alternative_period_end
+  default_brightness: !input default_brightness
+  alternative_brightness: !input alternative_brightness
 
+  brightness: |
+    {% 
+      if  ( period_start < period_end
+            and (now() >= today_at(period_start) and
+            now() <= today_at(period_end))
+          )
+          or
+          ( period_start > period_end
+            and (now() >= today_at(period_start) or
+            now() <= today_at(period_end))
+          )
+    %}{{alternative_brightness}}{% else %}{{default_brightness}}{% endif %}
+
+# ---------------------------------------------
+#  Auslöser
+# ---------------------------------------------
 trigger:
   - platform: state
     entity_id: !input motion_entity
@@ -68,18 +137,19 @@ trigger:
   - platform: state
     entity_id: !input motion_entity
     to: "off"
-    for:
-      seconds: !input no_motion_wait
+    for: !input no_motion_wait
     id: keine_bewegung
 
   - platform: template
     value_template: "{{ expand(my_lights.entity_id) | selectattr('state', '==', 'off') | list | count > 0 }}"
-    for:
-      seconds: !input light_auto_off_after
+    for: !input light_auto_off_after
     id: light_on_timeout
 
 condition: []
 
+# ---------------------------------------------
+#  Aktionen
+# ---------------------------------------------
 action:
   # Licht bei Bewegung einschalten
   - choose:
@@ -98,7 +168,11 @@ action:
         sequence:
           - service: light.turn_on
             target: !input light_target
+            data:
+              brightness_pct: "{{brightness}}"
 
+  # Licht ausschalten, wenn für die Dauer von {{no_motion_wait}}
+  # keine Bewegung stattgefunden hat.
   - choose:
       - conditions:
           - condition: trigger
@@ -109,8 +183,8 @@ action:
           - service: light.turn_off
             target: !input light_target
 
-  # Licht nach {{light_auto_off_after}} Minuten abschalten,
-  # wenn keine Bewegung für {{no_motion_wait}} Minuten
+  # Licht nach der Dauer von {{light_auto_off_after}} abschalten,
+  # wenn keine Bewegung für Dauer von {{no_motion_wait}} existierte
   - choose:
       - conditions:
           - condition: trigger
@@ -118,8 +192,7 @@ action:
           - condition: state
             entity_id: !input motion_entity
             state: "off"
-            for:
-              minutes: !input no_motion_wait
+            for: !input no_motion_wait
           - condition: template
             value_template: "{{ expand(my_lights.entity_id) | selectattr('state', '==', 'on') | list | count > 0 }}"
         sequence:
