@@ -39,7 +39,9 @@ blueprint:
 
     no_motion_wait:
       name: "No motion time"
-      description: "Time to leave the light on after last motion is detected."
+      description: |
+        Time to leave the light on after last motion is detected.
+        (This time starts counting, when binary_sensor changes to "off")
       default:
         minutes: 2
       selector:
