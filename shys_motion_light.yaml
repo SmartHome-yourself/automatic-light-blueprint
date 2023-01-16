@@ -19,8 +19,28 @@ blueprint:
           domain: binary_sensor
           device_class: motion
 
+    light_sensor_entity:
+      name: "Light Sensor (optional)"
+      description: "The Light to use"
+      default: []
+      selector:
+        entity:
+          domain: sensor
+          device_class: illuminance
+
+    lux_limit:
+      name: "Lux-Limit"
+      description: |
+        The limit of lux-value. If value of light-sensor is higher, then don't turn on the light on motion.
+      default: 100
+      selector:
+        number:
+          min: 1
+          max: 300
+          unit_of_measurement: "lx"
+
     light_target:
-      name: Light
+      name: Light(s)
       description: light to use
       selector:
         target:
@@ -108,10 +128,21 @@ max_exceeded: silent
 variables:
   all_day: !input all_day
   my_lights: !input light_target
+  default_brightness: !input default_brightness
+
   period_start: !input alternative_period_start
   period_end: !input alternative_period_end
-  default_brightness: !input default_brightness
   alternative_brightness: !input alternative_brightness
+
+  light_sensor_entity: !input light_sensor_entity
+  lux_limit: !input lux_limit
+
+  light_sensor_value: |
+    {% if light_sensor_entity != [] %}
+      states(light_sensor_entity) | float(0)
+    {% else %}
+      0
+    {% endif %}
 
   brightness: |
     {% 
@@ -163,15 +194,17 @@ action:
           - condition: or
             conditions:
               - condition: template
-                value_template: "{{ all_day|int==0 }}"
+                value_template: "{{ all_day == 'switch on all day' }}"
               - condition: state
                 entity_id: sun.sun
                 state: below_horizon
+          - condition: template
+            value_template: "{{ light_sensor_value < lux_limit }}"
         sequence:
           - service: light.turn_on
             target: !input light_target
             data:
-              brightness_pct: "{{brightness}}"
+              brightness_pct: "{{ brightness }}"
 
   # Licht ausschalten, wenn für die Dauer von {{no_motion_wait}}
   # keine Bewegung stattgefunden hat.
