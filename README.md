@@ -12,4 +12,6 @@ In addition, there is a timeout after which the light is also switched off after
   
   &nbsp;
   
-![image](https://user-images.githubusercontent.com/705724/212280953-e90ec1d5-7ec5-4b7c-890e-4376c928f9e0.png)
+  ![image](https://user-images.githubusercontent.com/705724/212506902-e981f842-ff49-457d-a616-6d602f1c7383.png)
+  
+  
