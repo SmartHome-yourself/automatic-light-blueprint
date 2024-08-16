@@ -20,6 +20,7 @@ blueprint:
           device_class:
             - motion
             - presence
+            - occupancy
 
     light_sensor_entity:
       name: "Light Sensor (optional)"
