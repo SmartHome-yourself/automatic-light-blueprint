@@ -16,11 +16,13 @@ blueprint:
       description: "The motionsensor to use"
       selector:
         entity:
-          domain: binary_sensor
+          domain:
+            - binary_sensor
           device_class:
             - motion
             - presence
             - occupancy
+          multiple: false
 
     light_sensor_entity:
       name: "Light Sensor (optional)"
@@ -28,8 +30,11 @@ blueprint:
       default: []
       selector:
         entity:
-          domain: sensor
-          device_class: illuminance
+          domain:
+          - sensor
+          device_class:
+          - illuminance
+          multiple: false
 
     lux_limit:
       name: "Lux-Limit"
@@ -132,33 +137,24 @@ variables:
   all_day: !input all_day
   my_lights: !input light_target
   default_brightness: !input default_brightness
-
   period_start: !input alternative_period_start
   period_end: !input alternative_period_end
   alternative_brightness: !input alternative_brightness
-
   light_sensor_entity: !input light_sensor_entity
   lux_limit: !input lux_limit
-
-  light_sensor_value: |
+  light_sensor_value: >-
     {% if light_sensor_entity != [] %}
-      states(light_sensor_entity) | float(0)
+    states(light_sensor_entity) | float(0)
     {% else %}
-      0
+    0
     {% endif %}
-
-  brightness: |
-    {% 
-      if  ( period_start < period_end
-            and (now() >= today_at(period_start) and
-            now() <= today_at(period_end))
-          )
-          or
-          ( period_start > period_end
-            and (now() >= today_at(period_start) or
-            now() <= today_at(period_end))
-          )
-    %}{{alternative_brightness}}{% else %}{{default_brightness}}{% endif %}
+  brightness: >-
+    {% if  ( period_start < period_end and (now() >= today_at(period_start) and now() <= today_at(period_end)) ) or
+           ( period_start > period_end and (now() >= today_at(period_start) or now() <= today_at(period_end)) ) %}
+      {{alternative_brightness}}
+    {% else %}
+      {{default_brightness}}
+    {% endif %}
 
 # ---------------------------------------------
 #  Auslöser
@@ -189,50 +185,55 @@ condition: []
 action:
   # Licht bei Bewegung einschalten
   - choose:
-      - conditions:
-          - condition: trigger
-            id: bewegung
-          - condition: template
-            value_template: "{{ expand(my_lights.entity_id) | selectattr('state', '==', 'off') | list | count > 0 }}"
-          - condition: or
-            conditions:
-              - condition: template
-                value_template: "{{ all_day == 'switch on all day' }}"
-              - condition: state
-                entity_id: sun.sun
-                state: below_horizon
-          - condition: template
-            value_template: "{{ light_sensor_value < lux_limit }}"
-        sequence:
-          - service: light.turn_on
-            target: !input light_target
-            data:
-              brightness_pct: "{{ brightness }}"
+    - conditions:
+      - condition: trigger
+        id: bewegung
+      - condition: template
+        value_template: >-
+          {{ expand(my_lights.entity_id) | selectattr('state', '==', 'off') | list | count > 0 }}
+      - condition: or
+        conditions:
+        - condition: template
+          value_template: >-
+            {{ all_day == 'switch on all day' }}
+        - condition: state
+          entity_id: sun.sun
+          state: below_horizon
+      - condition: template
+        value_template: >-
+          {{ (light_sensor_value | float(0)) < (lux_limit | float(0)) }}
+      sequence:
+      - action: light.turn_on
+        target: !input light_target
+        data:
+          brightness_pct: '{{ brightness }}'
 
   # Licht ausschalten, wenn für die Dauer von {{no_motion_wait}}
   # keine Bewegung stattgefunden hat.
   - choose:
-      - conditions:
-          - condition: trigger
-            id: keine_bewegung
-          - condition: template
-            value_template: "{{ expand(my_lights.entity_id) | selectattr('state', '==', 'on') | list | count > 0 }}"
-        sequence:
-          - service: light.turn_off
-            target: !input light_target
+    - conditions:
+      - condition: trigger
+        id: keine_bewegung
+      - condition: template
+        value_template: >-
+          {{ expand(my_lights.entity_id) | selectattr('state', '==', 'on') | list | count > 0 }}
+      sequence:
+      - action: light.turn_off
+        target: !input light_target
 
   # Licht nach der Dauer von {{light_auto_off_after}} abschalten,
   # wenn keine Bewegung für Dauer von {{no_motion_wait}} existierte
   - choose:
-      - conditions:
-          - condition: trigger
-            id: light_on_timeout
-          - condition: state
-            entity_id: !input motion_entity
-            state: "off"
-            for: !input no_motion_wait
-          - condition: template
-            value_template: "{{ expand(my_lights.entity_id) | selectattr('state', '==', 'on') | list | count > 0 }}"
-        sequence:
-          - service: light.turn_off
-            target: !input light_target
+    - conditions:
+      - condition: trigger
+        id: light_on_timeout
+      - condition: state
+        entity_id: !input motion_entity
+        state: 'off'
+        for: !input no_motion_wait
+      - condition: template
+        value_template: >-
+          {{ expand(my_lights.entity_id) | selectattr('state', '==','on') | list | count > 0 }}
+      sequence:
+      - action: light.turn_off
+        target: !input light_target
