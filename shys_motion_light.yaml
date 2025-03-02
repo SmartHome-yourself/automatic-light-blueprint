@@ -144,7 +144,7 @@ variables:
   lux_limit: !input lux_limit
   light_sensor_value: >-
     {% if light_sensor_entity | trim != "" %}
-    states(light_sensor_entity) | float(0)
+    {{states(light_sensor_entity) | float(0)}}
     {% else %}
     0
     {% endif %}
